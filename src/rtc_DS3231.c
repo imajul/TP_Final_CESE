@@ -4,10 +4,8 @@
  *===========================================================================*/
 
 /*==================[inclusions]=============================================*/
-#include "../inc/rtc_DS3231.h"   // <= own header
+#include "rtc_DS3231.h"   // <= own header
 #include "sapi.h"
-
-#define eeprom24C32DelayMs   delayInaccurateMs
 
 /*==================[internal data definition]===============================*/
 DEBUG_PRINT_ENABLE
@@ -17,67 +15,26 @@ DEBUG_PRINT_ENABLE
 /*==================[external functions definition]==========================*/
 
 //-----------------------------------------------------------------------------
-// MANAGEMENT
-//-----------------------------------------------------------------------------
-
-uint8_t eeprom24C32I2cAddress( Eeprom24C32_t* eeprom )
-{
-	bool_t a0 = eeprom->A0;
-	bool_t a1 = eeprom->A1;
-	bool_t a2 = eeprom->A2;
-
-	//                0b1010               A2        A1       A0
-	return (EEPROM24C32_CTRL_CODE<<3) | (a2<<2) | (a1<<1) | (a0<<0);
-}
-
-uint8_t RTC_Address( void )
-{
-	//           0b1101000
-	return (DS3231_SLAVE_ADDRESS);
-}
-
-//-----------------------------------------------------------------------------
 // INITIALIZATION
 //-----------------------------------------------------------------------------
 
-bool_t eeprom24C32Init( Eeprom24C32_t* eeprom,
-		int32_t i2c, bool_t A0, bool_t A1, bool_t A2,
-		int32_t pageSize, int32_t memorySize )
+void RTC_Init( rtcDS3231_t* now, uint8_t year, uint8_t month, uint8_t month_day, uint8_t week_day, uint8_t hour, uint8_t minute, uint8_t second )
 {
-
-	bool_t retVal = FALSE;
-	uint8_t testByte = 0;
-
-	// I2C port connected to EEPROM, example I2C0
-	eeprom->i2c = i2c;
-	// Use this if fixed address
-	eeprom->A0 = A0;
-	eeprom->A1 = A1;
-	eeprom->A2 = A2;
-	// EEPROM capacity
-	eeprom->pageSize = pageSize;   // EEPROM page size [bytes]
-	eeprom->memorySize = memorySize; // EEPROM total memory size [bytes]
-
-	return TRUE; //retVal;
-}
-
-void RTC_Init( rtcDS3231_t* now)
-{
-	now->year = (((ANIO / 10) << 4)|(ANIO % 10));
-	now->month = (((MES / 10) << 4)|(MES % 10));
-	now->mday = (((DIA_MES / 10) << 4)|(DIA_MES % 10));
-	now->wday = (((DIA_SEMANA / 10) << 4)|(DIA_SEMANA % 10));
-	now->hour = (((HORA / 10) << 4)|(HORA % 10));
-	now->min = (((MINUTOS / 10) << 4)|(MINUTOS % 10));
-	now->sec= (((SEGUNDOS / 10) << 4)|(SEGUNDOS % 10));
-	now->alarm1_seconds = (((ALARMA_SEGUNDOS / 10) << 4)|(ALARMA_SEGUNDOS % 10));	 /* 0 to 59   */
-	now->alarm1_minutes = 0b10000000 | (((ALARMA_MINUTOS / 10) << 4)|(ALARMA_MINUTOS % 10));	 /* 0 to 59   */
-	now->alarm1_hours = 0b10000000 | (((ALARMA_HORA / 10) << 4)|(ALARMA_HORA % 10));	 /* 1–12 + AM/PM / 00–23 */
-	now->alarm1_DY_DT = 0b10000000;	 /* bit 7 = Alarm when hours, minutes, and seconds match. LSB=01 to 7  or 1 to 31 */
+	now->year = (((year / 10) << 4)|(year % 10));
+	now->month = (((month / 10) << 4)|(month % 10));
+	now->mday = (((month_day / 10) << 4)|(month_day % 10));
+	now->wday = (((week_day / 10) << 4)|(week_day % 10));
+	now->hour = (((hour / 10) << 4)|(hour % 10));
+	now->min = (((minute / 10) << 4)|(minute % 10));
+	now->sec= (((second / 10) << 4)|(second % 10));
+	now->alarm1_seconds = 0;	 /* 0 to 59   */
+	now->alarm1_minutes = 0;	 /* 0 to 59   */
+	now->alarm1_hours = 0;	 /* 1–12 + AM/PM / 00–23 */
+	now->alarm1_DY_DT = 0;	 /* bit 7 = Alarm when hours, minutes, and seconds match. LSB=01 to 7  or 1 to 31 */
 	now->alarm2_minutes = 0;	 /* 0 to 59   */
 	now->alarm2_hours = 0;	 /* 1–12 + AM/PM / 00–23 */
 	now->alarm2_DY_DT = 0;	 /* 01 to 7  or 1 to 31 */
-	now->control = 0b00000101;  /* Alarm 1 enable & Interrupt Control enable */
+	now->control = 0;  /* Alarm 1 enable & Interrupt Control enable */
 	now->control_status = 0;
 	now->aging_offset;
 	now->MSB_temp;     	/* temperatura byte superior */
@@ -89,7 +46,7 @@ void RTC_Init( rtcDS3231_t* now)
 //-----------------------------------------------------------------------------
 
 // Write time registers
-void RTC_write_time( rtcDS3231_t* time, int32_t i2c)
+void RTC_write_time( rtcDS3231_t* time, int32_t i2c, uint8_t address)
 {
 	uint8_t dato[17];
 
@@ -111,103 +68,55 @@ void RTC_write_time( rtcDS3231_t* time, int32_t i2c)
 	dato[15]=time->control;
 	dato[16]=time->control_status;
 
-	i2cWrite(i2c,RTC_Address(),dato,17,TRUE );
+	i2cWrite(i2c, address,dato,17,TRUE );
 }
 
 // Reset alarm flags
-void RTC_reset_alarm( rtcDS3231_t* time, int32_t i2c)
+void RTC_reset_alarm( rtcDS3231_t* time, int32_t i2c, uint8_t address)
 {
 	uint8_t dato[2];
 
+	RTC_read_control_registers( time, i2c, address);
+
 	dato[0]=0x0F;
-	dato[1]=time->control_status;
+	dato[1]=time->control_status & ~(1<<0);
 
-	i2cWrite(i2c,RTC_Address(),dato,2,TRUE );
+	i2cWrite(i2c, address,dato,2,TRUE );
 }
 
-// Byte Write
-bool_t eeprom24C32WriteByte( Eeprom24C32_t* eeprom,
-		uint32_t memoryAddress, uint8_t byteToWrite )
+// Set alarm 1
+void RTC_set_alarm_time(rtcDS3231_t* time, int32_t i2c, uint8_t address, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second, uint8_t alarmBits)
 {
+	uint8_t dato[5];
 
-	bool_t retVal = TRUE; // True if OK
+	dato[0]=0x07;
+	dato[1]= decToBcd(second) | ((alarmBits & 0b00000001) << 7);
+	dato[2]= decToBcd(minute) | ((alarmBits & 0b00000010) << 6);
+	dato[3]= decToBcd(hour)   | ((alarmBits & 0b00000100) << 5);
+	dato[4]= decToBcd(day)    | ((alarmBits & 0b00001000) << 4);
 
-	// Check memory address
-	if( memoryAddress > eeprom->memorySize ) {
-		return FALSE;
-	}
+	i2cWrite(i2c,address,dato,5,TRUE );
 
-	uint8_t dataToWrite[3];
-
-	// Memory address High
-	dataToWrite[0] = EEPROM_ADDRESS_HIGH( memoryAddress );
-	// Memory address Low
-	dataToWrite[1] = EEPROM_ADDRESS_LOW( memoryAddress );
-
-	// Byte to write
-	dataToWrite[2] = (uint8_t)byteToWrite;
-
-	/* uint8_t i2cNumber, uint8_t  i2cSlaveAddress,
-      uint8_t* transmitDataBuffer, uint16_t transmitDataBufferSize,
-      bool_t sendWriteStop */
-	retVal = i2cWrite( eeprom->i2c,
-			eeprom24C32I2cAddress( eeprom ),
-			dataToWrite, 3, TRUE );
-
-	eeprom24C32DelayMs(5); // Twc - Write cycle time (byte or page)
-
-	return retVal; // Byte writed
 }
 
-bool_t eeprom24C32WriteDate( Eeprom24C32_t* eeprom24C32, uint16_t* eeprom_address, rtcDS3231_t time)
+void RTC_turn_alarm_on(rtcDS3231_t* time, int32_t i2c, uint8_t address)
 {
-	eeprom24C32WriteByte( eeprom24C32, *eeprom_address, time.mday);
-	(*eeprom_address)++;
-	eeprom24C32WriteByte( eeprom24C32, *eeprom_address, time.month);
-	(*eeprom_address)++;
-	eeprom24C32WriteByte( eeprom24C32, *eeprom_address, time.year);
-	(*eeprom_address)++;
-	return TRUE;
+	uint8_t dato[2];
+
+	dato[0]=0x0E;
+	dato[1]=0b00000101;
+
+	i2cWrite(i2c, address,dato,2,TRUE );
 }
 
-// Page Write
-bool_t eeprom24C32WritePage( Eeprom24C32_t* eeprom, uint32_t page,
-		uint8_t* byteBuffer, uint32_t byteBufferSize )
+void RTC_turn_alarm_off(rtcDS3231_t* time, int32_t i2c, uint8_t address)
 {
+	uint8_t dato[2];
 
-	bool_t retVal = TRUE; // True if OK
+	dato[0]=0x0E;
+	dato[1]=0;
 
-	// Check valid buffer size
-	if( byteBufferSize != eeprom->pageSize ) {
-		return FALSE;
-	}
-
-	uint16_t i=0;
-
-	uint16_t memoryAddress = page * eeprom->pageSize;
-
-	uint8_t dataToWrite[ byteBufferSize+2 ]; // 2 bytes more for memory address
-
-	// Memory address High
-	dataToWrite[0] = EEPROM_ADDRESS_HIGH( memoryAddress );
-	// Memory address Low
-	dataToWrite[1] = EEPROM_ADDRESS_LOW( memoryAddress );
-
-	// Bytes to write
-	for( i=0; i<byteBufferSize; i++ ) {
-		dataToWrite[i+2] = byteBuffer[i];
-	}
-
-	// uint8_t i2cNumber, uint8_t  i2cSlaveAddress,
-	// uint8_t* transmitDataBuffer, uint16_t transmitDataBufferSize,
-	// bool_t sendWriteStop
-	retVal = i2cWrite( eeprom->i2c,
-			eeprom24C32I2cAddress( eeprom),
-			dataToWrite, (byteBufferSize+2), TRUE );
-
-	eeprom24C32DelayMs(5); // Twc - Write cycle time (byte or page)
-
-	return retVal; // Byte writed
+	i2cWrite(i2c, address,dato,2,TRUE );
 }
 
 //-----------------------------------------------------------------------------
@@ -215,127 +124,76 @@ bool_t eeprom24C32WritePage( Eeprom24C32_t* eeprom, uint32_t page,
 //-----------------------------------------------------------------------------
 
 // Read time registers
-rtcDS3231_t RTC_read_time( rtcDS3231_t* now, int32_t i2c)
+void RTC_read_time( rtcDS3231_t* now, int32_t i2c, uint8_t address)
 {
-	uint8_t lectura[19];
+	uint8_t lectura[7];
+	uint8_t dato = 0x00;
 
-	i2cRead( i2c, RTC_Address(),(uint8_t*)0, 0, FALSE, lectura, 19, TRUE);
+//	i2cWrite(i2c, address,0x00,1,FALSE );
+//	i2cRead( i2c,  address,(uint8_t*)0, 0, FALSE, lectura, 19, TRUE);
 
-	now->year = lectura[10];
-	now->month = lectura[9];
-	now->mday = lectura[8];
-	now->wday = lectura[7];
-	now->hour = lectura[6];
-	now->min = lectura[5];
-	now->sec = lectura[4];
+	i2cRead( i2c, address, &dato, 1, FALSE, lectura, 7, TRUE);
 
-	//now->alarm1_seconds = (((ALARMA_SEGUNDOS / 10) << 4)|(ALARMA_SEGUNDOS % 10));	 /* 0 to 59   */
-	//now->alarm1_minutes = 0b10000000 | (((ALARMA_MINUTOS / 10) << 4)|(ALARMA_MINUTOS % 10));	 /* 0 to 59   */
-	//now->alarm1_hours = 0b10000000 | (((ALARMA_HORA / 10) << 4)|(ALARMA_HORA % 10));	 /* 1–12 + AM/PM / 00–23 */
-	//now->alarm1_DY_DT = 0b10000000;	 /* bit 7 = Alarm when hours, minutes, and seconds match. LSB=01 to 7  or 1 to 31 */
-	//now->alarm2_minutes = 0;	 /* 0 to 59   */
-	//now->alarm2_hours = 0;	 /* 1–12 + AM/PM / 00–23 */
-	//now->alarm2_DY_DT = 0;	 /* 01 to 7  or 1 to 31 */
+//	now->year = lectura[10];
+//	now->month = lectura[9];
+//	now->mday = lectura[8];
+//	now->wday = lectura[7];
+//	now->hour = lectura[6];
+//	now->min = lectura[5];
+//	now->sec = lectura[4];
+//
+//	now->MSB_temp = (int8_t)lectura[2];     	  /* temperatura byte superior */
+//	now->LSB_temp = ((uint8_t)lectura[3]>>6)*25;		/* temperatura byte inferior */
 
-	//now->control = 0b00000101;  /* Alarm 1 enable & Interrupt Control enable */
-	//now->control_status = 0;
-	//now->aging_offset;
+	now->year = lectura[6];
+	now->month = lectura[5];
+	now->mday = lectura[4];
+	now->wday = lectura[3];
+	now->hour = lectura[2];
+	now->min = lectura[1];
+	now->sec = lectura[0];
 
-	now->MSB_temp = (int8_t)lectura[2];     	  /* temperatura byte superior */
-	now->LSB_temp = ((uint8_t)lectura[3]>>6)*25;		/* temperatura byte inferior */
+//	now->MSB_temp = (int8_t)lectura[17];     	  /* temperatura byte superior */
+//	now->LSB_temp = ((uint8_t)lectura[18]>>6)*25;		/* temperatura byte inferior */
 
-	return *now;
 }
 
-// Current Address Read
-bool_t eeprom24C32ReadCurrentAddress( Eeprom24C32_t* eeprom,
-		uint32_t memoryAddress,
-		uint8_t* readedByte )
+void RTC_read_temp( rtcDS3231_t* now, int32_t i2c, uint8_t address)
 {
-	bool_t retVal = TRUE; // True if OK
+	uint8_t lectura[2];
+	uint8_t dato = 0x11;
 
-	// uint8_t i2cNumber, uint8_t i2cSlaveAddress,
-	// uint8_t* dataToReadBuffer, uint16_t dataToReadBufferSize,
-	// bool_t sendWriteStop,
-	// uint8_t* reciveDataBuffer, uint16_t reciveDataBufferSize,
-	// bool_t sendReadStop
-	retVal = i2cRead( eeprom->i2c,
-			eeprom24C32I2cAddress( eeprom ),
-			(uint8_t*)0, 0,
-			FALSE,
-			readedByte, 1, TRUE );
+	i2cRead( i2c, address, &dato, 1, FALSE, lectura, 2, TRUE);
 
-	return retVal; // read correct
+	now->MSB_temp = (int8_t)lectura[0];     	  /* temperatura byte superior */
+	now->LSB_temp = ((uint8_t)lectura[1]>>6)*25;		/* temperatura byte inferior */
+
 }
 
-// Random Read
-bool_t eeprom24C32ReadRandom( Eeprom24C32_t* eeprom,
-		uint32_t memoryAddress, uint8_t* readedByte )
+void RTC_read_control_registers( rtcDS3231_t* now, int32_t i2c, uint8_t address)
 {
-	bool_t retVal = TRUE; // True if OK
+	uint8_t lectura[2];
+	uint8_t dato = 0x0E;
 
-	// Check memory address
-	if( memoryAddress > eeprom->memorySize ) {
-		return FALSE;
-	}
+	i2cRead( i2c, address, &dato, 1, FALSE, lectura, 2, TRUE);
 
-	uint8_t addressToRead[ 2 ]; // 2 bytes for memory address
+	now->control = lectura[0];     	 		/* registro control */
+	now->control_status = lectura[1];		/* registro control/status */
 
-	// Memory address High
-	addressToRead[0] = EEPROM_ADDRESS_HIGH( memoryAddress );
-	// Memory address Low
-	addressToRead[1] = EEPROM_ADDRESS_LOW( memoryAddress );
-
-	// uint8_t i2cNumber, uint8_t i2cSlaveAddress,
-	// uint8_t* dataToReadBuffer, uint16_t dataToReadBufferSize,
-	// bool_t sendWriteStop,
-	// uint8_t* reciveDataBuffer, uint16_t reciveDataBufferSize,
-	// bool_t sendReadStop
-	retVal = i2cRead( eeprom->i2c,
-			eeprom24C32I2cAddress( eeprom ),
-			addressToRead, 2, FALSE,
-			readedByte, 1, TRUE );
-
-	//eeprom24C32DelayMs(1); // ??? - Read cycle time (byte or page)
-
-	return retVal; // read correct
 }
 
-// Sequential Read
-bool_t eeprom24C32ReadSequential( Eeprom24C32_t* eeprom, uint32_t address,
-		uint8_t* byteBuffer, uint32_t byteBufferSize )
+uint8_t decToBcd(uint8_t val)
 {
-	bool_t retVal = TRUE; // True if OK
-
-	// Check valid buffer size
-	if( byteBufferSize > eeprom->memorySize  ) {
-		return FALSE;
-	}
-
-	// TODO: Check valid address
-	//if( address >= eeprom24C32AmountOfPagesGet(eeprom) ) {
-	//   return FALSE;
-	//}
-
-	uint8_t addressToRead[ 2 ]; // 2 bytes for memory address
-
-	// Memory address High
-	addressToRead[0] = EEPROM_ADDRESS_HIGH( address );
-	// Memory address Low
-	addressToRead[1] = EEPROM_ADDRESS_LOW( address );
-
-	// uint8_t i2cNumber, uint8_t i2cSlaveAddress,
-	// uint8_t* dataToReadBuffer, uint16_t dataToReadBufferSize,
-	// bool_t sendWriteStop,
-	// uint8_t* reciveDataBuffer, uint16_t reciveDataBufferSize,
-	// bool_t sendReadStop
-	retVal = i2cRead( eeprom->i2c,
-			eeprom24C32I2cAddress( eeprom),
-			addressToRead, 2, FALSE,
-			byteBuffer, byteBufferSize, TRUE );
-
-	return retVal; // Byte writed
+// Convert normal decimal numbers to binary coded decimal
+	return ( (val/10*16) + (val%10) );
 }
+
+uint8_t bcdToDec(uint8_t val)
+{
+// Convert binary coded decimal to normal decimal numbers
+	return ( (val/16*10) + (val%16) );
+}
+
 
 /*==================[ISR external functions definition]======================*/
 

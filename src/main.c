@@ -5,8 +5,8 @@
 
 /*=====[Inclusions of function dependencies]=================================*/
 
-#include "TP_PCSE.h"
-
+#include "eeprom_24C32.h"
+#include "DS18B20.h"
 #include "rtc_DS3231.h"
 //#include "antiRebote.h"
 #include "sapi.h"
@@ -15,7 +15,8 @@
 
 DEBUG_PRINT_ENABLE
 
-UART_485
+#define	SENSOR_TEMP_SUCIO	GPIO7
+#define	SENSOR_TEMP_LIMPIO	GPIO8
 
 /*=====[Definitions of extern global variables]==============================*/
 
@@ -23,7 +24,7 @@ UART_485
 
 rtcDS3231_t time;
 Eeprom24C32_t eeprom24C32;
-estados_t estadoTecla;
+//estados_t estadoTecla;
 
 /*=====[Definitions of private global variables]=============================*/
 
@@ -38,6 +39,7 @@ int main( void )
 	uint32_t i=0;
 	uint16_t eeprom_address = EEPROM24C32_FIRST_MEMORY_ADDRESS;
 	uint8_t readedByte = 0;
+	int temp_1, temp_2;
 
 	i2cInit( I2C0, 100000 );
 	debugPrintlnString( "I2C initialization complete." );
@@ -47,6 +49,12 @@ int main( void )
 
 	eeprom24C32Init( &eeprom24C32, I2C0, 1, 1, 1, EEPROM24C32_PAGE_SIZE, EEPROM_32_K_BIT );  // inicializo la EEPROM
 	debugPrintlnString( "EEPROM initialization complete." );
+
+	owInit(SENSOR_TEMP_SUCIO);
+	owSetBitResolution(SENSOR_TEMP_SUCIO,12);
+	owInit(SENSOR_TEMP_LIMPIO);
+	owSetBitResolution(SENSOR_TEMP_LIMPIO,12);
+	debugPrintlnString( "Temperature sensors initialization complete." );// inicializo el sensor de temperatura
 
 	RTC_write_time(&time, I2C0);  // cargo la hora en el RTC DS3231
 
@@ -74,6 +82,9 @@ int main( void )
 		debugPrintInt(time.LSB_temp);
 		debugPrintString(" Pin: ");
 		debugPrintInt(gpioRead(GPIO1));
+
+		temp_1 = owReadTemperature(SENSOR_TEMP_SUCIO);
+		temp_2 = owReadTemperature(SENSOR_TEMP_LIMPIO);
 
 		if(!gpioRead(GPIO1))	// verifico si el RTC genera una alarma o  si se pulsa la tecla
 		{

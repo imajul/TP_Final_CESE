@@ -4,8 +4,8 @@
  *===========================================================================*/
 
 /*==================[inclusions]=============================================*/
-#include "../inc/eeprom_24C32.h"   // <= own header
-
+#include "eeprom_24C32.h"   // <= own header
+#include "rtc_DS3231.h"
 #include "sapi.h"
 
 #define eeprom24C32DelayMs   delayInaccurateMs
@@ -29,12 +29,6 @@ uint8_t eeprom24C32I2cAddress( Eeprom24C32_t* eeprom )
 
 	//                0b1010               A2        A1       A0
 	return (EEPROM24C32_CTRL_CODE<<3) | (a2<<2) | (a1<<1) | (a0<<0);
-}
-
-uint8_t RTC_Address( void )
-{
-	//           0b1101000
-	return (DS3231_SLAVE_ADDRESS);
 }
 
 //-----------------------------------------------------------------------------
@@ -62,75 +56,13 @@ bool_t eeprom24C32Init( Eeprom24C32_t* eeprom,
 	return TRUE; //retVal;
 }
 
-void RTC_Init( rtcDS3231_t* now)
-{
-	now->year = (((ANIO / 10) << 4)|(ANIO % 10));
-	now->month = (((MES / 10) << 4)|(MES % 10));
-	now->mday = (((DIA_MES / 10) << 4)|(DIA_MES % 10));
-	now->wday = (((DIA_SEMANA / 10) << 4)|(DIA_SEMANA % 10));
-	now->hour = (((HORA / 10) << 4)|(HORA % 10));
-	now->min = (((MINUTOS / 10) << 4)|(MINUTOS % 10));
-	now->sec= (((SEGUNDOS / 10) << 4)|(SEGUNDOS % 10));
-	now->alarm1_seconds = (((ALARMA_SEGUNDOS / 10) << 4)|(ALARMA_SEGUNDOS % 10));	 /* 0 to 59   */
-	now->alarm1_minutes = 0b10000000 | (((ALARMA_MINUTOS / 10) << 4)|(ALARMA_MINUTOS % 10));	 /* 0 to 59   */
-	now->alarm1_hours = 0b10000000 | (((ALARMA_HORA / 10) << 4)|(ALARMA_HORA % 10));	 /* 1–12 + AM/PM / 00–23 */
-	now->alarm1_DY_DT = 0b10000000;	 /* bit 7 = Alarm when hours, minutes, and seconds match. LSB=01 to 7  or 1 to 31 */
-	now->alarm2_minutes = 0;	 /* 0 to 59   */
-	now->alarm2_hours = 0;	 /* 1–12 + AM/PM / 00–23 */
-	now->alarm2_DY_DT = 0;	 /* 01 to 7  or 1 to 31 */
-	now->control = 0b00000101;  /* Alarm 1 enable & Interrupt Control enable */
-	now->control_status = 0;
-	now->aging_offset;
-	now->MSB_temp;     	/* temperatura byte superior */
-	now->LSB_temp;		/* temperatura byte inferior */
-}
-
 //-----------------------------------------------------------------------------
 // WRITE OPERATIONS
 //-----------------------------------------------------------------------------
 
-// Write time registers
-void RTC_write_time( rtcDS3231_t* time, int32_t i2c)
-{
-	uint8_t dato[17];
-
-	dato[0]=0x00;
-	dato[1]=time->sec;
-	dato[2]=time->min;
-	dato[3]=time->hour;
-	dato[4]=time->wday;
-	dato[5]=time->mday;
-	dato[6]=time->month;
-	dato[7]=time->year;
-	dato[8]=time->alarm1_seconds;
-	dato[9]=time->alarm1_minutes;
-	dato[10]=time->alarm1_hours;
-	dato[11]=time->alarm1_DY_DT;
-	dato[12]=time->alarm2_minutes;
-	dato[13]=time->alarm2_hours;
-	dato[14]=time->alarm2_DY_DT;
-	dato[15]=time->control;
-	dato[16]=time->control_status;
-
-	i2cWrite(i2c,RTC_Address(),dato,17,TRUE );
-}
-
-// Reset alarm flags
-void RTC_reset_alarm( rtcDS3231_t* time, int32_t i2c)
-{
-	uint8_t dato[2];
-
-	dato[0]=0x0F;
-	dato[1]=time->control_status;
-
-	i2cWrite(i2c,RTC_Address(),dato,2,TRUE );
-}
-
 // Byte Write
-bool_t eeprom24C32WriteByte( Eeprom24C32_t* eeprom,
-		uint32_t memoryAddress, uint8_t byteToWrite )
+bool_t eeprom24C32WriteByte( Eeprom24C32_t* eeprom, int32_t memoryAddress, uint8_t byteToWrite )
 {
-
 	bool_t retVal = TRUE; // True if OK
 
 	// Check memory address
@@ -214,39 +146,6 @@ bool_t eeprom24C32WritePage( Eeprom24C32_t* eeprom, uint32_t page,
 //-----------------------------------------------------------------------------
 // READ OPERATIONS
 //-----------------------------------------------------------------------------
-
-// Read time registers
-rtcDS3231_t RTC_read_time( rtcDS3231_t* now, int32_t i2c)
-{
-	uint8_t lectura[19];
-
-	i2cRead( i2c, RTC_Address(),(uint8_t*)0, 0, FALSE, lectura, 19, TRUE);
-
-	now->year = lectura[10];
-	now->month = lectura[9];
-	now->mday = lectura[8];
-	now->wday = lectura[7];
-	now->hour = lectura[6];
-	now->min = lectura[5];
-	now->sec = lectura[4];
-
-	//now->alarm1_seconds = (((ALARMA_SEGUNDOS / 10) << 4)|(ALARMA_SEGUNDOS % 10));	 /* 0 to 59   */
-	//now->alarm1_minutes = 0b10000000 | (((ALARMA_MINUTOS / 10) << 4)|(ALARMA_MINUTOS % 10));	 /* 0 to 59   */
-	//now->alarm1_hours = 0b10000000 | (((ALARMA_HORA / 10) << 4)|(ALARMA_HORA % 10));	 /* 1–12 + AM/PM / 00–23 */
-	//now->alarm1_DY_DT = 0b10000000;	 /* bit 7 = Alarm when hours, minutes, and seconds match. LSB=01 to 7  or 1 to 31 */
-	//now->alarm2_minutes = 0;	 /* 0 to 59   */
-	//now->alarm2_hours = 0;	 /* 1–12 + AM/PM / 00–23 */
-	//now->alarm2_DY_DT = 0;	 /* 01 to 7  or 1 to 31 */
-
-	//now->control = 0b00000101;  /* Alarm 1 enable & Interrupt Control enable */
-	//now->control_status = 0;
-	//now->aging_offset;
-
-	now->MSB_temp = (int8_t)lectura[2];     	  /* temperatura byte superior */
-	now->LSB_temp = ((uint8_t)lectura[3]>>6)*25;		/* temperatura byte inferior */
-
-	return *now;
-}
 
 // Current Address Read
 bool_t eeprom24C32ReadCurrentAddress( Eeprom24C32_t* eeprom,
