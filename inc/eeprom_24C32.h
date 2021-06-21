@@ -11,7 +11,7 @@
 /*==================[inclusions]=============================================*/
 
 #include "sapi.h"
-#include "rtc_DS3231.h"
+
 
 /*==================[c++]====================================================*/
 #ifdef __cplusplus
@@ -21,13 +21,13 @@ extern "C" {
 /*==================[macros]=================================================*/
 
 // EEPROM24C32 total memory size in bytes
-#define EEPROM_32_K_BIT              4096 // Memory size [bytes]
+//#define EEPROM_32_K_BIT              4096 // Memory size [bytes]
 
 // EEPROM24C32 single page size (in bytes)
 #define EEPROM24C32_PAGE_SIZE       32 // [bytes per page]
 
 // EEPROM24C32 I2C address
-#define EEPROM24C32_CTRL_CODE       0xA // 0b1010
+#define EEPROM24C32_CTRL_CODE       0x0A // 0b1010
 
 // Function aliases
 #define eeprom24C32ReadByte         eeprom24C32ReadRandom
@@ -40,17 +40,19 @@ extern "C" {
 
 // EEPROM24C32 total memory size in bytes
 // #define EEPROM24C32_MEMORY_SIZE   4 KBytes
-#define EEPROM24C32_FIRST_MEMORY_ADDRESS  0x0000
-#define EEPROM24C32_LAST_MEMORY_ADDRESS   0x0FFF
-#define EEPROM24C32_MEMORY_SIZE           (EEPROM24C32_LAST_MEMORY_ADDRESS  + 1) //
+#define EEPROM24C32_FIRST_MEMORY_ADDRESS 	 (EEPROM24C32_HEADER_POINTER + EEPROM24C32_HEADER_SIZE)
+#define EEPROM24C32_LAST_MEMORY_ADDRESS  	 0x0FFF
+#define EEPROM24C32_MEMORY_SIZE          	 (EEPROM24C32_LAST_MEMORY_ADDRESS  + 1)
+#define EEPROM24C32_HEADER_POINTER			 0x0000  // pointer to first available address
+#define EEPROM24C32_HEADER_SIZE			     2  	 // size in bytes
 
 // EEPROM24C32_MEMORY_SIZE / EEPROM24C32_PAGE_SIZE
-#define EEPROM24C32_PAGE_AMOUNT           EEPROAM24C32_MEMORY_SIZE / EEPROM24C32_PAGE_SIZE
+#define EEPROM24C32_PAGE_AMOUNT           EEPROM24C32_MEMORY_SIZE / EEPROM24C32_PAGE_SIZE
 
 /*==================[typedef]================================================*/
 
-typedef struct{
-
+typedef struct
+{
    int32_t i2c; // I2C port connected to EEPROM, example I2C0
    // Use this if fixed address
    bool_t A0;          // EEPROM I2C address
@@ -83,6 +85,12 @@ uint8_t eeprom24C32I2cAddress( Eeprom24C32_t* eeprom);
 
 bool_t eeprom24C32Init( Eeprom24C32_t* eeprom, int32_t i2c, bool_t A0, bool_t A1, bool_t A2, int32_t pageSize, int32_t memorySize );
 
+bool_t eeprom24C32Reset( Eeprom24C32_t* eeprom);
+
+uint16_t eeprom24C32GetCurrentAddress( Eeprom24C32_t* eeprom);
+
+bool_t eeprom24C32UpdateDataAddress( Eeprom24C32_t* eeprom, uint16_t address );
+
 //-----------------------------------------------------------------------------
 // WRITE OPERATIONS
 //-----------------------------------------------------------------------------
@@ -90,7 +98,7 @@ bool_t eeprom24C32Init( Eeprom24C32_t* eeprom, int32_t i2c, bool_t A0, bool_t A1
 // Byte Write
 bool_t eeprom24C32WriteByte( Eeprom24C32_t* eeprom, uint32_t memoryAddress, uint8_t byteToWrite );
 
-bool_t eeprom24C32WriteDate( Eeprom24C32_t* eeprom24C32, uint16_t* eeprom_address, rtcDS3231_t time);
+bool_t eeprom24C32WriteData( Eeprom24C32_t* eeprom24C32, uint8_t *dataToWrite, uint32_t dataSize);
 
 // Page Write
 bool_t eeprom24C32WritePage( Eeprom24C32_t* eeprom, uint32_t page, uint8_t* byteBuffer, uint32_t byteBufferSize );

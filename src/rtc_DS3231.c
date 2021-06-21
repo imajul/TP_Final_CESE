@@ -96,7 +96,6 @@ void RTC_set_alarm_time(rtcDS3231_t* time, int32_t i2c, uint8_t address, uint8_t
 	dato[4]= decToBcd(day)    | ((alarmBits & 0b00001000) << 4);
 
 	i2cWrite(i2c,address,dato,5,TRUE );
-
 }
 
 void RTC_turn_alarm_on(rtcDS3231_t* time, int32_t i2c, uint8_t address)
